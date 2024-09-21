@@ -375,6 +375,34 @@ contract TikeeTronTest is Test {
         vm.stopPrank();
     }
 
+    function test_getAvailableTickets() public setupEvent buyTickets {
+        uint256 availableTickets = tikeeTron.getAvailableTickets(0);
+
+        assertEq(availableTickets, 97);
+    }
+
+    function test_getAvailableTickets_WhenEventNotFound() public view {
+        uint256 availableTickets = tikeeTron.getAvailableTickets(0);
+
+        assertEq(availableTickets, 0);
+    }
+
+    function test_getAvailableTicketsByType() public setupEvent buyTickets {
+        uint256 availableVipTickets = tikeeTron.getAvailableTicketsByType(0, "VIP");
+        uint256 availablePremiumTickets = tikeeTron.getAvailableTicketsByType(0, "Premium");
+        uint256 availableRegularTickets = tikeeTron.getAvailableTicketsByType(0, "Regular");
+
+        assertEq(availableVipTickets, 19);
+        assertEq(availablePremiumTickets, 29);
+        assertEq(availableRegularTickets, 49);
+    }
+
+    function test_getAvailableTicketsByType_WhenEventNotFound() public view {
+        uint256 availableTickets = tikeeTron.getAvailableTicketsByType(0, "VIP");
+
+        assertEq(availableTickets, 0);
+    }
+
     modifier setupEvent() {
         string memory name = "Test Event";
         string memory metadata = "This is a test event";
