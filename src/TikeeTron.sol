@@ -160,6 +160,25 @@ contract TikeeTron is ERC721URIStorage, Ownable, ReentrancyGuard {
     }
 
     /**
+     * @dev Returns the total number of tickets available for an event.
+     * @param eventId The ID of the event.
+     * @return The total number of tickets available.
+     */
+    function getAvailableTickets(uint256 eventId) public view returns (uint256) {
+        return events[eventId].totalTickets - ticketsSold[eventId];
+    }
+
+    /**
+     * @dev Returns the number of available tickets for a specific type.
+     * @param eventId The ID of the event.
+     * @param ticketType The type of ticket.
+     * @return The number of available tickets for the type.
+     */
+    function getAvailableTicketsByType(uint256 eventId, string memory ticketType) public view returns (uint256) {
+        return ticketSupplies[eventId][ticketType];
+    }
+
+    /**
      * @dev See {IERC165-supportsInterface}.
      */
     function supportsInterface(bytes4 interfaceId) public view override(ERC721URIStorage) returns (bool) {
