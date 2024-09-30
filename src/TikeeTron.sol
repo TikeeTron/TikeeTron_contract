@@ -32,22 +32,26 @@ contract TikeeTron is ERC721URIStorage, Ownable, ReentrancyGuard {
     /**
      * @dev Emitted when a new event is created.
      */
-    event EventCreated(string name, string metadata, address indexed organizer, uint256 eventDate);
+    event EventCreated(
+        uint256 indexed eventId, string name, string metadata, address indexed organizer, uint256 eventDate
+    );
 
     /**
      * @dev Emitted when a ticket is bought.
      */
-    event TicketBought(uint256 eventId, string ticketType, address indexed buyer, uint256 ticketPrice);
+    event TicketBought(
+        uint256 indexed ticketId, uint256 indexed eventId, string ticketType, address indexed buyer, uint256 ticketPrice
+    );
 
     /**
      * @dev Emitted when an event is updated.
      */
-    event EventUpdated(uint256 eventId, string name, string metadata, uint256 date);
+    event EventUpdated(uint256 indexed eventId, string name, string metadata, uint256 date);
 
     /**
      * @dev Emitted when ticket supply is updated.
      */
-    event TicketSupplyUpdated(uint256 eventId, uint256 supply);
+    event TicketSupplyUpdated(uint256 indexed eventId, uint256 supply);
 
     /**
      * @dev Constructor that sets up the ERC721 token with name and symbol.
@@ -73,7 +77,7 @@ contract TikeeTron is ERC721URIStorage, Ownable, ReentrancyGuard {
         events[_eventId] = EventInfo(name, metadata, payable(msg.sender), date, totalTickets);
         mapTickets(ticketInfos, totalTickets);
 
-        emit EventCreated(name, metadata, msg.sender, date);
+        emit EventCreated(_eventId, name, metadata, msg.sender, date);
         _eventId++;
     }
 
@@ -115,7 +119,7 @@ contract TikeeTron is ERC721URIStorage, Ownable, ReentrancyGuard {
             require(successRefund, "Refund failed");
         }
 
-        emit TicketBought(eventId, ticketType, msg.sender, ticketPrices[eventId][ticketType]);
+        emit TicketBought(_ticketId, eventId, ticketType, msg.sender, ticketPrices[eventId][ticketType]);
     }
 
     /**
