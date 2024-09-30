@@ -62,7 +62,7 @@ contract TikeeTronTest is Test {
         ticketInfos[0] = ticketInfo;
 
         vm.expectEmit(true, true, true, true);
-        emit TikeeTron.EventCreated(name, metadata, organizer, date);
+        emit TikeeTron.EventCreated(0, name, metadata, organizer, date);
 
         vm.prank(organizer);
         tikeeTron.createEvent(name, metadata, date, totalTickets, ticketInfos);
@@ -153,7 +153,7 @@ contract TikeeTronTest is Test {
 
     function test_buyTicket_emitsEvent() public setupEvent {
         vm.expectEmit(true, true, true, true);
-        emit TikeeTron.TicketBought(0, "VIP", address(user1), 50 ether);
+        emit TikeeTron.TicketBought(1, 0, "VIP", address(user1), 50 ether);
 
         vm.prank(user1);
         tikeeTron.buyTicket{value: 50 ether}(0, "This is a test event", "VIP");
