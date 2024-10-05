@@ -4,6 +4,7 @@ pragma solidity ^0.8.25;
 import "forge-std/Test.sol";
 import {TikeeTron} from "../src/TikeeTron.sol";
 import {TicketInfo} from "../src/types/TicketInfo.sol";
+import {EventInfo} from "../src/types/EventInfo.sol";
 
 contract TikeeTronTest is Test {
     TikeeTron private tikeeTron;
@@ -21,154 +22,149 @@ contract TikeeTronTest is Test {
 
         vm.deal(organizer, 100 ether);
         vm.deal(user1, 100 ether);
+        vm.deal(user2, 100 ether);
     }
 
     function test_createEvent() public {
         string memory name = "Test Event";
         string memory metadata = "This is a test event";
-        uint256 date = block.timestamp + 1 days;
-        uint256 totalTickets = 100;
-        TicketInfo memory ticketInfo = TicketInfo({ticketType: "VIP", ticketPrice: 100 ether, ticketSupply: 100});
+        uint256 startDate = block.timestamp + 1 days;
+        uint256 endDate = block.timestamp + 3 days;
+        TicketInfo memory ticketInfo = TicketInfo("VIP", 100 ether, 100, startDate, endDate);
         TicketInfo[] memory ticketInfos = new TicketInfo[](1);
         ticketInfos[0] = ticketInfo;
 
         vm.prank(organizer);
-        tikeeTron.createEvent(name, metadata, date, totalTickets, ticketInfos);
-        vm.stopPrank();
+        tikeeTron.createEvent(name, metadata, startDate, endDate, ticketInfos);
 
-        (
-            string memory eventName,
-            string memory eventMetadata,
-            address eventOrganizer,
-            uint256 eventDate,
-            uint256 eventTotalTickets
-        ) = tikeeTron.events(0);
-        assertEq(eventName, name);
-        assertEq(eventMetadata, metadata);
-        assertEq(eventOrganizer, organizer);
-        assertEq(eventDate, date);
-        assertEq(eventTotalTickets, totalTickets);
-        assertEq(tikeeTron.ticketPrices(0, "VIP"), 100 ether);
-        assertEq(tikeeTron.ticketSupplies(0, "VIP"), 100);
+        EventInfo memory eventInfo = tikeeTron.getEvent(0);
+        assertEq(eventInfo.name, name);
+        assertEq(eventInfo.metadata, metadata);
+        assertEq(eventInfo.organizer, organizer);
+        assertEq(eventInfo.startDate, startDate);
+        assertEq(eventInfo.endDate, endDate);
+        assertEq(tikeeTron.getAvailableTicketsByType(0, "VIP"), 100);
     }
 
     function test_createEvent_emitsEvent() public {
         string memory name = "Test Event";
         string memory metadata = "This is a test event";
-        uint256 date = block.timestamp + 1 days;
-        uint256 totalTickets = 100;
-        TicketInfo memory ticketInfo = TicketInfo({ticketType: "VIP", ticketPrice: 100 ether, ticketSupply: 100});
+        uint256 startDate = block.timestamp + 1 days;
+        uint256 endDate = block.timestamp + 2 days;
+        TicketInfo memory ticketInfo = TicketInfo("VIP", 100 ether, 100, startDate, endDate);
         TicketInfo[] memory ticketInfos = new TicketInfo[](1);
         ticketInfos[0] = ticketInfo;
 
         vm.expectEmit(true, true, true, true);
-        emit TikeeTron.EventCreated(0, name, metadata, organizer, date);
+        emit TikeeTron.EventCreated(0, name, metadata, organizer, startDate, endDate);
 
         vm.prank(organizer);
-        tikeeTron.createEvent(name, metadata, date, totalTickets, ticketInfos);
-        vm.stopPrank();
+        tikeeTron.createEvent(name, metadata, startDate, endDate, ticketInfos);
     }
 
-    function test_createEvent_RevertIf_DateIsInPast() public {
+    function test_createEvent_RevertIf_StartDateIsInPast() public {
         string memory name = "Test Event";
         string memory metadata = "This is a test event";
         vm.warp(block.timestamp + 1 days);
-        uint256 date = block.timestamp - 1 days;
-        uint256 totalTickets = 100;
-        TicketInfo memory ticketInfo = TicketInfo({ticketType: "VIP", ticketPrice: 100 ether, ticketSupply: 100});
+        uint256 startDate = block.timestamp - 1 days;
+        uint256 endDate = block.timestamp + 1 days;
+        TicketInfo memory ticketInfo = TicketInfo("VIP", 100 ether, 100, startDate, endDate);
         TicketInfo[] memory ticketInfos = new TicketInfo[](1);
         ticketInfos[0] = ticketInfo;
 
-        vm.expectRevert("Event date must be in the future");
-        tikeeTron.createEvent(name, metadata, date, totalTickets, ticketInfos);
+        vm.expectRevert("Event start date must be in the future");
+        tikeeTron.createEvent(name, metadata, startDate, endDate, ticketInfos);
+    }
+
+    function test_createEvent_RevertIf_EndDateIsBeforeStartDate() public {
+        string memory name = "Test Event";
+        string memory metadata = "This is a test event";
+        uint256 startDate = block.timestamp + 2 days;
+        uint256 endDate = block.timestamp + 1 days;
+        TicketInfo memory ticketInfo = TicketInfo("VIP", 100 ether, 100, startDate, endDate);
+        TicketInfo[] memory ticketInfos = new TicketInfo[](1);
+        ticketInfos[0] = ticketInfo;
+
+        vm.expectRevert("Event end date must be after start date");
+        tikeeTron.createEvent(name, metadata, startDate, endDate, ticketInfos);
     }
 
     function test_createEvent_RevertIf_TicketInfosIsEmpty() public {
         string memory name = "Test Event";
         string memory metadata = "This is a test event";
-        uint256 date = block.timestamp + 1 days;
-        uint256 totalTickets = 100;
+        uint256 startDate = block.timestamp + 1 days;
+        uint256 endDate = block.timestamp + 2 days;
         TicketInfo[] memory ticketInfos = new TicketInfo[](0);
 
         vm.expectRevert("Ticket types must be greater than 0");
-        tikeeTron.createEvent(name, metadata, date, totalTickets, ticketInfos);
+        tikeeTron.createEvent(name, metadata, startDate, endDate, ticketInfos);
     }
 
-    function test_createEvent_RevertIf_TicketSupplyEachTypeIsZero() public {
+    function test_createEvent_RevertIf_TicketSupplyIsZero() public {
         string memory name = "Test Event";
         string memory metadata = "This is a test event";
-        uint256 date = block.timestamp + 1 days;
-        uint256 totalTickets = 100;
-        TicketInfo memory ticketInfo = TicketInfo({ticketType: "VIP", ticketPrice: 100 ether, ticketSupply: 0});
+        uint256 startDate = block.timestamp + 1 days;
+        uint256 endDate = block.timestamp + 2 days;
+        TicketInfo memory ticketInfo = TicketInfo("VIP", 100 ether, 0, startDate, endDate);
         TicketInfo[] memory ticketInfos = new TicketInfo[](1);
         ticketInfos[0] = ticketInfo;
 
-        vm.expectRevert("Ticket supply each type must be greater than 0");
-        tikeeTron.createEvent(name, metadata, date, totalTickets, ticketInfos);
+        vm.expectRevert("Ticket supply must be greater than 0");
+        tikeeTron.createEvent(name, metadata, startDate, endDate, ticketInfos);
     }
 
-    function test_createEvent_RevertIf_TotalTicketsIsZero() public {
+    function test_createEvent_RevertIf_TicketStartDateIsInPast() public {
         string memory name = "Test Event";
         string memory metadata = "This is a test event";
-        uint256 date = block.timestamp + 1 days;
-        uint256 totalTickets = 0;
-        TicketInfo memory ticketInfo = TicketInfo({ticketType: "VIP", ticketPrice: 100 ether, ticketSupply: 100});
+        vm.warp(block.timestamp + 1 days);
+        uint256 startDate = block.timestamp + 1 days;
+        uint256 endDate = block.timestamp + 2 days;
+        TicketInfo memory ticketInfo = TicketInfo("VIP", 100 ether, 100, block.timestamp - 1 days, endDate);
         TicketInfo[] memory ticketInfos = new TicketInfo[](1);
         ticketInfos[0] = ticketInfo;
 
-        vm.expectRevert("Total tickets must be greater than 0");
-        tikeeTron.createEvent(name, metadata, date, totalTickets, ticketInfos);
+        vm.expectRevert("Ticket start date must be in the future");
+        tikeeTron.createEvent(name, metadata, startDate, endDate, ticketInfos);
     }
 
-    function test_createEvent_RevertIf_TotalTicketsIsNotEqualToSumOfTicketSupplies() public {
+    function test_createEvent_RevertIf_TicketEndDateIsBeforeStartDate() public {
         string memory name = "Test Event";
         string memory metadata = "This is a test event";
-        uint256 date = block.timestamp + 1 days;
-        uint256 totalTickets = 100;
-        TicketInfo memory ticketInfo = TicketInfo({ticketType: "VIP", ticketPrice: 100 ether, ticketSupply: 50});
+        uint256 startDate = block.timestamp + 1 days;
+        uint256 endDate = block.timestamp + 3 days;
+        TicketInfo memory ticketInfo = TicketInfo("VIP", 100 ether, 100, startDate, startDate - 1);
         TicketInfo[] memory ticketInfos = new TicketInfo[](1);
         ticketInfos[0] = ticketInfo;
 
-        vm.expectRevert("Total tickets must be equal to the sum of ticket supplies");
-        tikeeTron.createEvent(name, metadata, date, totalTickets, ticketInfos);
+        vm.expectRevert("Ticket end date must be after start date");
+        tikeeTron.createEvent(name, metadata, startDate, endDate, ticketInfos);
     }
 
     function test_buyTicket() public setupEvent {
         uint256 user1StartingBalance = address(user1).balance;
 
+        vm.warp(block.timestamp + 1 days + 1 hours); // Warp to after ticket sales start
         vm.prank(user1);
-        tikeeTron.buyTicket{value: 50 ether}(0, "This is a test event", "VIP");
-        vm.stopPrank();
+        tikeeTron.buyTicket{value: 50 ether}(0, "This is a test ticket", "VIP");
 
         uint256 user1EndingBalance = address(user1).balance;
 
         assertEq(user1EndingBalance, user1StartingBalance - 50 ether);
         assertEq(tikeeTron.balanceOf(address(user1)), 1);
-        assertEq(tikeeTron.tokenURI(1), "This is a test event");
-        assertEq(tikeeTron.ticketSupplies(0, "VIP"), 19);
+        assertEq(tikeeTron.tokenURI(1), "This is a test ticket");
+        assertEq(tikeeTron.getAvailableTicketsByType(0, "VIP"), 19);
         assertEq(tikeeTron.ownerOf(1), address(user1));
-        assertEq(tikeeTron.tickets(1), 0);
+        assertEq(tikeeTron.getEventId(1), 0);
         assertEq(tikeeTron.ticketsSold(0), 1);
     }
 
     function test_buyTicket_emitsEvent() public setupEvent {
+        vm.warp(block.timestamp + 1 days + 1 hours); // Warp to after ticket sales start
         vm.expectEmit(true, true, true, true);
         emit TikeeTron.TicketBought(1, 0, "VIP", address(user1), 50 ether);
 
         vm.prank(user1);
-        tikeeTron.buyTicket{value: 50 ether}(0, "This is a test event", "VIP");
-        vm.stopPrank();
-    }
-
-    function test_buyTicket_RefundExcessFunds() public setupEvent {
-        uint256 user1StartingBalance = address(user1).balance;
-
-        vm.prank(user1);
-        tikeeTron.buyTicket{value: 100 ether}(0, "This is a test event", "VIP");
-        vm.stopPrank();
-
-        // Only 50 ether should be deducted from user1's balance
-        assertEq(address(user1).balance, user1StartingBalance - 50 ether);
+        tikeeTron.buyTicket{value: 50 ether}(0, "This is a test ticket", "VIP");
     }
 
     function test_buyTicket_transferToOrganizerAndOwner() public setupEvent {
@@ -176,8 +172,8 @@ contract TikeeTronTest is Test {
         uint256 ownerStartingBalance = address(owner).balance;
 
         vm.prank(user1);
-        tikeeTron.buyTicket{value: 50 ether}(0, "This is a test event", "VIP");
-        vm.stopPrank();
+        vm.warp(block.timestamp + 1 days + 1 hours); // Warp to after ticket sales start
+        tikeeTron.buyTicket{value: 50 ether}(0, "This is a test ticket", "VIP");
 
         uint256 organizerBalance = address(organizer).balance;
         uint256 ownerBalance = address(owner).balance;
@@ -187,251 +183,148 @@ contract TikeeTronTest is Test {
         assertEq(ownerBalance, ownerStartingBalance + fee);
     }
 
-    function test_buyTicket_RevertIf_EventHasAlreadyStarted() public setupEvent {
-        vm.warp(block.timestamp + 1 days);
+    function test_buyTicket_RevertIf_TicketSalesHasEnded() public setupEvent {
+        vm.warp(block.timestamp + 3 days);
         vm.prank(user1);
-        vm.expectRevert("Event has already started");
-        tikeeTron.buyTicket{value: 50 ether}(0, "This is a test event", "VIP");
-        vm.stopPrank();
-    }
-
-    function test_buyTicket_RevertIf_TicketTypeDoesNotExist() public setupEvent {
-        vm.prank(user1);
-        vm.expectRevert("Ticket type does not exist");
-        tikeeTron.buyTicket{value: 50 ether}(0, "This is a test event", "NOT_EXIST");
-        vm.stopPrank();
+        vm.expectRevert("Ticket sales have ended");
+        tikeeTron.buyTicket{value: 50 ether}(0, "This is a test ticket", "VIP");
     }
 
     function test_buyTicket_RevertIf_InsufficientFunds() public setupEvent {
         vm.prank(user1);
-        vm.expectRevert("Insufficient funds");
-        tikeeTron.buyTicket{value: 40 ether}(0, "This is a test event", "VIP");
-        vm.stopPrank();
+        vm.warp(block.timestamp + 1 days + 1 hours); // Warp to after ticket sales start
+        vm.expectRevert("Incorrect ticket price");
+        tikeeTron.buyTicket{value: 40 ether}(0, "This is a test ticket", "VIP");
     }
 
-    function test_updateEvent() public setupEvent {
-        vm.prank(organizer);
-        tikeeTron.updateEvent(0, "Updated Event", "This is an updated event", block.timestamp + 2 days);
-        vm.stopPrank();
-
-        (string memory name, string memory metadata, address eventOrganizer, uint256 eventDate,) = tikeeTron.events(0);
-
-        assertEq(name, "Updated Event");
-        assertEq(metadata, "This is an updated event");
-        assertEq(eventOrganizer, organizer);
-        assertEq(eventDate, block.timestamp + 2 days);
-    }
-
-    function test_updateEvent_emitsEvent() public setupEvent {
-        vm.expectEmit(true, true, true, true);
-        emit TikeeTron.EventUpdated(0, "Updated Event", "This is an updated event", block.timestamp + 2 days);
-
-        vm.prank(organizer);
-        tikeeTron.updateEvent(0, "Updated Event", "This is an updated event", block.timestamp + 2 days);
-        vm.stopPrank();
-    }
-
-    function test_updateEvent_RevertIf_EventHasAlreadyStarted() public setupEvent {
-        vm.warp(block.timestamp + 1 days);
-        vm.prank(organizer);
-        vm.expectRevert("Event has already started");
-        tikeeTron.updateEvent(0, "Updated Event", "This is an updated event", block.timestamp + 2 days);
-        vm.stopPrank();
-    }
-
-    function test_updateEvent_RevertIf_EventDateIsInPast() public setupEvent {
-        vm.prank(organizer);
-        vm.expectRevert("Event date must be in the future");
-        tikeeTron.updateEvent(0, "Updated Event", "This is an updated event", block.timestamp);
-        vm.stopPrank();
-    }
-
-    function test_updateEvent_RevertIf_NotOrganizer() public setupEvent {
+    function test_buyTicket_RevertIf_TicketSalesHaveNotStarted() public setupEvent {
         vm.prank(user1);
-        vm.expectRevert("Only the organizer can call this function");
-        tikeeTron.updateEvent(0, "Updated Event", "This is an updated event", block.timestamp + 2 days);
-        vm.stopPrank();
+        vm.expectRevert("Ticket sales have not started");
+        tikeeTron.buyTicket{value: 50 ether}(0, "This is a test ticket", "VIP");
     }
 
-    function test_updateTicketSupplies() public setupEvent {
-        // Update VIP ticket supply from 20 to 10
-        TicketInfo memory vipTicketInfo = TicketInfo({ticketType: "VIP", ticketPrice: 50 ether, ticketSupply: 10});
-        TicketInfo memory premiumTicketInfo =
-            TicketInfo({ticketType: "Premium", ticketPrice: 25 ether, ticketSupply: 30});
-        TicketInfo memory regularTicketInfo =
-            TicketInfo({ticketType: "Regular", ticketPrice: 10 ether, ticketSupply: 50});
-        TicketInfo[] memory ticketInfos = new TicketInfo[](3);
-        ticketInfos[0] = vipTicketInfo;
-        ticketInfos[1] = premiumTicketInfo;
-        ticketInfos[2] = regularTicketInfo;
-
-        vm.prank(organizer);
-        tikeeTron.updateTicketSupplies(0, ticketInfos, 90);
-        vm.stopPrank();
-    }
-
-    function test_updateTicketSupplies_emitsEvent() public setupEvent {
-        TicketInfo memory vipTicketInfo = TicketInfo({ticketType: "VIP", ticketPrice: 50 ether, ticketSupply: 10});
-        TicketInfo memory premiumTicketInfo =
-            TicketInfo({ticketType: "Premium", ticketPrice: 25 ether, ticketSupply: 30});
-        TicketInfo memory regularTicketInfo =
-            TicketInfo({ticketType: "Regular", ticketPrice: 10 ether, ticketSupply: 50});
-        TicketInfo[] memory ticketInfos = new TicketInfo[](3);
-        ticketInfos[0] = vipTicketInfo;
-        ticketInfos[1] = premiumTicketInfo;
-        ticketInfos[2] = regularTicketInfo;
-
-        vm.prank(organizer);
-        vm.expectEmit(true, true, true, true);
-        emit TikeeTron.TicketSupplyUpdated(0, 90);
-        tikeeTron.updateTicketSupplies(0, ticketInfos, 90);
-        vm.stopPrank();
-    }
-
-    function test_updateTicketSupplies_WithZeroTicketSupply() public setupEvent {
-        TicketInfo memory vipTicketInfo = TicketInfo({ticketType: "VIP", ticketPrice: 50 ether, ticketSupply: 0});
-        TicketInfo memory premiumTicketInfo =
-            TicketInfo({ticketType: "Premium", ticketPrice: 25 ether, ticketSupply: 30});
-        TicketInfo[] memory ticketInfos = new TicketInfo[](2);
-        ticketInfos[0] = vipTicketInfo;
-        ticketInfos[1] = premiumTicketInfo;
-
-        vm.prank(organizer);
-        tikeeTron.updateTicketSupplies(0, ticketInfos, 30);
-        vm.stopPrank();
-
-        assertEq(tikeeTron.ticketSupplies(0, "VIP"), 0);
-        assertEq(tikeeTron.ticketSupplies(0, "Premium"), 30);
-    }
-
-    function test_updateTicketSupplies_RevertIf_NotOrganizer() public setupEvent {
-        TicketInfo memory vipTicketInfo = TicketInfo({ticketType: "VIP", ticketPrice: 50 ether, ticketSupply: 10});
-        TicketInfo[] memory ticketInfos = new TicketInfo[](1);
-        ticketInfos[0] = vipTicketInfo;
-
+    function test_buyTicket_RevertIf_TicketSalesHaveEnded() public setupEvent {
+        vm.warp(block.timestamp + 3 days + 1 hours); // Warp to after ticket sales end
         vm.prank(user1);
-        vm.expectRevert("Only the organizer can call this function");
-        tikeeTron.updateTicketSupplies(0, ticketInfos, 90);
+        vm.expectRevert("Ticket sales have ended");
+        tikeeTron.buyTicket{value: 50 ether}(0, "This is a test ticket", "VIP");
+    }
+
+    function test_buyTicket_RevertIf_TicketSuppliesAreExhausted() public setupEvent {
+        vm.warp(block.timestamp + 1 days + 1 hours); // Warp to after ticket sales start
+        vm.deal(user1, 1050 ether);
+        for (uint256 i = 0; i < 20; i++) {
+            vm.prank(user1);
+            tikeeTron.buyTicket{value: 50 ether}(0, "This is a test ticket", "VIP");
+        }
+        vm.prank(user1);
+        vm.expectRevert("Ticket supplies are exhausted");
+        tikeeTron.buyTicket{value: 50 ether}(0, "This is a test ticket", "VIP");
+    }
+
+    function test_getEvent() public setupEvent {
+        EventInfo memory eventInfo = tikeeTron.getEvent(0);
+        assertEq(eventInfo.name, "Test Event");
+        assertEq(eventInfo.metadata, "This is a test event");
+        assertEq(eventInfo.organizer, organizer);
+        assertEq(eventInfo.startDate, block.timestamp + 1 days);
+        assertEq(eventInfo.endDate, block.timestamp + 3 days);
+    }
+
+    function test_getEventId() public setupEvent {
+        vm.prank(user1);
+        vm.warp(block.timestamp + 1 days + 1 hours); // Warp to after ticket sales start
+        tikeeTron.buyTicket{value: 50 ether}(0, "This is a test ticket", "VIP");
+        assertEq(tikeeTron.getEventId(1), 0);
+    }
+
+    function test_getAvailableTicketsByType() public setupEvent {
+        assertEq(tikeeTron.getAvailableTicketsByType(0, "VIP"), 20);
+        assertEq(tikeeTron.getAvailableTicketsByType(0, "Premium"), 30);
+        assertEq(tikeeTron.getAvailableTicketsByType(0, "Regular"), 50);
+    }
+
+    function test_supportsInterface() public view {
+        assertTrue(tikeeTron.supportsInterface(0x80ac58cd)); // ERC721
+        assertTrue(tikeeTron.supportsInterface(0x5b5e139f)); // ERC721Metadata
+        assertTrue(tikeeTron.supportsInterface(0x01ffc9a7)); // ERC165
+    }
+
+    function test_tokenURI() public setupEvent {
+        vm.prank(user1);
+        vm.warp(block.timestamp + 1 days + 1 hours); // Warp to after ticket sales start
+        tikeeTron.buyTicket{value: 50 ether}(0, "This is a test ticket", "VIP");
+        assertEq(tikeeTron.tokenURI(1), "This is a test ticket");
+    }
+
+    function test_buyTicket_MultipleTypes() public setupEvent {
+        vm.warp(block.timestamp + 1 days + 1 hours); // Warp to after ticket sales start
+
+        vm.startPrank(user1);
+        tikeeTron.buyTicket{value: 50 ether}(0, "VIP Ticket", "VIP");
+        tikeeTron.buyTicket{value: 25 ether}(0, "Premium Ticket", "Premium");
+        tikeeTron.buyTicket{value: 10 ether}(0, "Regular Ticket", "Regular");
         vm.stopPrank();
+
+        assertEq(tikeeTron.balanceOf(address(user1)), 3);
+        assertEq(tikeeTron.getAvailableTicketsByType(0, "VIP"), 19);
+        assertEq(tikeeTron.getAvailableTicketsByType(0, "Premium"), 29);
+        assertEq(tikeeTron.getAvailableTicketsByType(0, "Regular"), 49);
+        assertEq(tikeeTron.ticketsSold(0), 3);
     }
 
-    function test_updateTicketSupplies_RevertIf_TotalTicketsIsNotEqualToSumOfTicketSupplies() public setupEvent {
-        TicketInfo memory vipTicketInfo = TicketInfo({ticketType: "VIP", ticketPrice: 50 ether, ticketSupply: 10});
-        TicketInfo[] memory ticketInfos = new TicketInfo[](1);
-        ticketInfos[0] = vipTicketInfo;
-
-        vm.prank(organizer);
-        vm.expectRevert("Total tickets must be equal to the sum of ticket supplies");
-        tikeeTron.updateTicketSupplies(0, ticketInfos, 90);
+    function test_buyTicket_SameTypeManyTimes() public setupEvent {
+        vm.startPrank(user1);
+        vm.deal(user1, 1000 ether);
+        vm.warp(block.timestamp + 1 days + 1 hours); // Warp to after ticket sales start
+        for (uint256 i = 0; i < 5; i++) {
+            tikeeTron.buyTicket{value: 50 ether}(0, string(abi.encodePacked("VIP Ticket ", i + 1)), "VIP");
+        }
         vm.stopPrank();
+
+        assertEq(tikeeTron.balanceOf(address(user1)), 5);
+        assertEq(tikeeTron.getAvailableTicketsByType(0, "VIP"), 15);
+        assertEq(tikeeTron.ticketsSold(0), 5);
     }
 
-    function test_updateTicketSupplies_RevertIf_TicketInfosIsEmpty() public setupEvent {
-        TicketInfo[] memory ticketInfos = new TicketInfo[](0);
-
-        vm.prank(organizer);
-        vm.expectRevert("Ticket types must be greater than 0");
-        tikeeTron.updateTicketSupplies(0, ticketInfos, 90);
-        vm.stopPrank();
+    function test_getAvailableTicketsByType_NonExistentEvent() public view {
+        assertEq(tikeeTron.getAvailableTicketsByType(999, "VIP"), 0);
     }
 
-    function test_updateTicketSupplies_RevertIf_TotalTicketsIsZero() public setupEvent {
-        TicketInfo[] memory ticketInfos = new TicketInfo[](1);
-        ticketInfos[0] = TicketInfo({ticketType: "VIP", ticketPrice: 50 ether, ticketSupply: 0});
-
-        vm.prank(organizer);
-        vm.expectRevert("Total tickets must be greater than 0");
-        tikeeTron.updateTicketSupplies(0, ticketInfos, 0);
-        vm.stopPrank();
+    function test_getAvailableTicketsByType_NonExistentTicketType() public setupEvent {
+        assertEq(tikeeTron.getAvailableTicketsByType(0, "NonExistent"), 0);
     }
 
-    function test_updateTicketSupplies_RevertIf_EventHasAlreadyStarted() public setupEvent {
-        TicketInfo memory vipTicketInfo = TicketInfo({ticketType: "VIP", ticketPrice: 50 ether, ticketSupply: 10});
-        TicketInfo[] memory ticketInfos = new TicketInfo[](1);
-        ticketInfos[0] = vipTicketInfo;
+    function test_buyTicket_DifferentUsers() public setupEvent {
+        vm.prank(user1);
+        vm.warp(block.timestamp + 1 days + 1 hours); // Warp to after ticket sales start
+        tikeeTron.buyTicket{value: 50 ether}(0, "VIP Ticket User1", "VIP");
 
-        vm.warp(block.timestamp + 1 days);
-        vm.prank(organizer);
-        vm.expectRevert("Event has already started");
-        tikeeTron.updateTicketSupplies(0, ticketInfos, 10);
-        vm.stopPrank();
-    }
+        vm.prank(user2);
+        tikeeTron.buyTicket{value: 25 ether}(0, "Premium Ticket User2", "Premium");
 
-    function test_updateTicketSupplies_RevertIf_TotalTicketsCannotBeLessThanTicketsSold()
-        public
-        setupEvent
-        buyTickets
-    {
-        TicketInfo memory vipTicketInfo = TicketInfo({ticketType: "VIP", ticketPrice: 50 ether, ticketSupply: 0});
-        TicketInfo memory premiumTicketInfo =
-            TicketInfo({ticketType: "Premium", ticketPrice: 25 ether, ticketSupply: 30});
-        TicketInfo[] memory ticketInfos = new TicketInfo[](2);
-        ticketInfos[0] = vipTicketInfo;
-        ticketInfos[1] = premiumTicketInfo;
-
-        vm.prank(organizer);
-        vm.expectRevert("Total tickets cannot be less than tickets sold");
-        tikeeTron.updateTicketSupplies(0, ticketInfos, 2);
-        vm.stopPrank();
-    }
-
-    function test_getAvailableTickets() public setupEvent buyTickets {
-        uint256 availableTickets = tikeeTron.getAvailableTickets(0);
-
-        assertEq(availableTickets, 97);
-    }
-
-    function test_getAvailableTickets_WhenEventNotFound() public view {
-        uint256 availableTickets = tikeeTron.getAvailableTickets(0);
-
-        assertEq(availableTickets, 0);
-    }
-
-    function test_getAvailableTicketsByType() public setupEvent buyTickets {
-        uint256 availableVipTickets = tikeeTron.getAvailableTicketsByType(0, "VIP");
-        uint256 availablePremiumTickets = tikeeTron.getAvailableTicketsByType(0, "Premium");
-        uint256 availableRegularTickets = tikeeTron.getAvailableTicketsByType(0, "Regular");
-
-        assertEq(availableVipTickets, 19);
-        assertEq(availablePremiumTickets, 29);
-        assertEq(availableRegularTickets, 49);
-    }
-
-    function test_getAvailableTicketsByType_WhenEventNotFound() public view {
-        uint256 availableTickets = tikeeTron.getAvailableTicketsByType(0, "VIP");
-
-        assertEq(availableTickets, 0);
+        assertEq(tikeeTron.balanceOf(address(user1)), 1);
+        assertEq(tikeeTron.balanceOf(address(user2)), 1);
+        assertEq(tikeeTron.getAvailableTicketsByType(0, "VIP"), 19);
+        assertEq(tikeeTron.getAvailableTicketsByType(0, "Premium"), 29);
+        assertEq(tikeeTron.ticketsSold(0), 2);
     }
 
     modifier setupEvent() {
         string memory name = "Test Event";
         string memory metadata = "This is a test event";
-        uint256 date = block.timestamp + 1 days;
-        uint256 totalTickets = 100;
-        TicketInfo memory vipTicketInfo = TicketInfo({ticketType: "VIP", ticketPrice: 50 ether, ticketSupply: 20});
-        TicketInfo memory premiumTicketInfo =
-            TicketInfo({ticketType: "Premium", ticketPrice: 25 ether, ticketSupply: 30});
-        TicketInfo memory regularTicketInfo =
-            TicketInfo({ticketType: "Regular", ticketPrice: 10 ether, ticketSupply: 50});
+        uint256 startDate = block.timestamp + 1 days;
+        uint256 endDate = block.timestamp + 3 days;
+        TicketInfo memory vipTicketInfo = TicketInfo("VIP", 50 ether, 20, startDate, endDate);
+        TicketInfo memory premiumTicketInfo = TicketInfo("Premium", 25 ether, 30, startDate, endDate);
+        TicketInfo memory regularTicketInfo = TicketInfo("Regular", 10 ether, 50, startDate, endDate);
         TicketInfo[] memory ticketInfos = new TicketInfo[](3);
         ticketInfos[0] = vipTicketInfo;
         ticketInfos[1] = premiumTicketInfo;
         ticketInfos[2] = regularTicketInfo;
 
         vm.prank(organizer);
-        tikeeTron.createEvent(name, metadata, date, totalTickets, ticketInfos);
-        vm.stopPrank();
-        _;
-    }
-
-    modifier buyTickets() {
-        vm.deal(user2, 100 ether);
-
-        vm.startPrank(user2);
-        tikeeTron.buyTicket{value: 50 ether}(0, "This is a test event", "VIP");
-        tikeeTron.buyTicket{value: 30 ether}(0, "This is a test event", "Premium");
-        tikeeTron.buyTicket{value: 20 ether}(0, "This is a test event", "Regular");
-        vm.stopPrank();
+        tikeeTron.createEvent(name, metadata, startDate, endDate, ticketInfos);
         _;
     }
 }

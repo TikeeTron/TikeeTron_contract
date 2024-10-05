@@ -9,4 +9,8 @@ struct TicketInfo {
     uint256 ticketPrice;
     /// @notice Supply of the ticket
     uint256 ticketSupply;
+    /// @notice Start date of the ticket
+    uint256 ticketStartDate;
+    /// @notice End date of the ticket
+    uint256 ticketEndDate;
 }

@@ -12,9 +12,7 @@ import {TicketInfo} from "./types/TicketInfo.sol";
  * @title TikeeTron
  * @dev A contract for managing event tickets as NFTs.
  *
- * This contract allows organizers to create events, sell tickets as NFTs,
- * and manage ticket supplies. It includes features like fee calculation,
- * ticket buying, and event updates.
+ * The contract allows event organizers to create events and sell tickets for those events.
  */
 contract TikeeTron is ERC721URIStorage, Ownable, ReentrancyGuard {
     // 3.00% fee with 2 decimals
@@ -24,16 +22,19 @@ contract TikeeTron is ERC721URIStorage, Ownable, ReentrancyGuard {
 
     mapping(uint256 eventId => EventInfo) public events;
     mapping(uint256 ticketId => uint256 eventId) public tickets;
-    mapping(uint256 eventId => mapping(string ticketType => uint256 price)) public ticketPrices;
-    mapping(uint256 eventId => mapping(string ticketType => uint256 supply)) public ticketSupplies;
-    mapping(uint256 eventId => mapping(address owner => uint256 ticketCount)) public ticketsOwned;
+    mapping(uint256 eventId => mapping(string ticketType => TicketInfo)) public ticketInfo;
     mapping(uint256 eventId => uint256 soldTickets) public ticketsSold;
 
     /**
      * @dev Emitted when a new event is created.
      */
     event EventCreated(
-        uint256 indexed eventId, string name, string metadata, address indexed organizer, uint256 eventDate
+        uint256 indexed eventId,
+        string name,
+        string metadata,
+        address indexed organizer,
+        uint256 startDate,
+        uint256 endDate
     );
 
     /**
@@ -44,16 +45,6 @@ contract TikeeTron is ERC721URIStorage, Ownable, ReentrancyGuard {
     );
 
     /**
-     * @dev Emitted when an event is updated.
-     */
-    event EventUpdated(uint256 indexed eventId, string name, string metadata, uint256 date);
-
-    /**
-     * @dev Emitted when ticket supply is updated.
-     */
-    event TicketSupplyUpdated(uint256 indexed eventId, uint256 supply);
-
-    /**
      * @dev Constructor that sets up the ERC721 token with name and symbol.
      */
     constructor() ERC721("TikeeTron", "TKT") Ownable(msg.sender) {}
@@ -62,23 +53,33 @@ contract TikeeTron is ERC721URIStorage, Ownable, ReentrancyGuard {
      * @dev Creates a new event.
      * @param name The name of the event.
      * @param metadata The metadata of the event.
-     * @param date The date of the event.
-     * @param totalTickets The total number of tickets for the event.
+     * @param startDate The start date of the event.
+     * @param endDate The end date of the event.
      * @param ticketInfos An array of TicketInfo structs containing ticket details.
      */
     function createEvent(
         string calldata name,
         string calldata metadata,
-        uint256 date,
-        uint256 totalTickets,
+        uint256 startDate,
+        uint256 endDate,
         TicketInfo[] calldata ticketInfos
-    ) external beforeCreateEvent(ticketInfos, totalTickets) {
-        require(date > block.timestamp, "Event date must be in the future");
-        events[_eventId] = EventInfo(name, metadata, payable(msg.sender), date, totalTickets);
-        mapTickets(ticketInfos, totalTickets);
+    ) external beforeCreateEvent(ticketInfos) {
+        require(startDate > block.timestamp, "Event start date must be in the future");
+        require(endDate > startDate, "Event end date must be after start date");
 
-        emit EventCreated(_eventId, name, metadata, msg.sender, date);
+        events[_eventId] = EventInfo(name, metadata, payable(msg.sender), startDate, endDate);
+        mapTickets(ticketInfos);
+
+        emit EventCreated(_eventId, name, metadata, msg.sender, startDate, endDate);
         _eventId++;
+    }
+
+    /**
+     * @dev Get event details.
+     * @param eventId The ID of the event.
+     */
+    function getEvent(uint256 eventId) public view returns (EventInfo memory) {
+        return events[eventId];
     }
 
     /**
@@ -93,83 +94,34 @@ contract TikeeTron is ERC721URIStorage, Ownable, ReentrancyGuard {
         beforeBuyTicket(eventId, ticketType)
         nonReentrant
     {
-        uint256 ticketPrice = ticketPrices[eventId][ticketType];
-        require(msg.value >= ticketPrice, "Insufficient funds");
+        TicketInfo storage ticketDetail = ticketInfo[eventId][ticketType];
 
         _ticketId++;
         _safeMint(msg.sender, _ticketId);
         _setTokenURI(_ticketId, metadata);
-        ticketSupplies[eventId][ticketType]--;
+        ticketDetail.ticketSupply--;
         ticketsSold[eventId]++;
-        ticketsOwned[eventId][msg.sender]++;
         tickets[_ticketId] = eventId;
 
         // 3% fee
-        uint256 fee = calculateFee(ticketPrices[eventId][ticketType]);
-        uint256 amount = ticketPrices[eventId][ticketType] - fee;
+        uint256 fee = calculateFee(ticketDetail.ticketPrice);
+        uint256 amount = ticketDetail.ticketPrice - fee;
 
         (bool success,) = events[eventId].organizer.call{value: amount}("");
         require(success, "Transfer to organizer failed");
         (success,) = payable(owner()).call{value: fee}("");
         require(success, "Transfer fee failed");
 
-        // Refund any excess funds
-        if (msg.value > ticketPrice) {
-            (bool successRefund,) = payable(msg.sender).call{value: msg.value - ticketPrice}("");
-            require(successRefund, "Refund failed");
-        }
-
-        emit TicketBought(_ticketId, eventId, ticketType, msg.sender, ticketPrices[eventId][ticketType]);
+        emit TicketBought(_ticketId, eventId, ticketType, msg.sender, ticketDetail.ticketPrice);
     }
 
     /**
-     * @dev Allows the organizer to update event details.
-     * @param eventId The ID of the event to update.
-     * @param name The new name of the event.
-     * @param metadata The new metadata for the event.
-     * @param date The new date for the event.
+     * @dev Returns the event ID for a given ticket ID.
+     * @param ticketId The ID of the ticket.
+     * @return The ID of the event.
      */
-    function updateEvent(uint256 eventId, string memory name, string memory metadata, uint256 date)
-        external
-        onlyOrganizer(eventId)
-    {
-        require(events[eventId].date > block.timestamp, "Event has already started");
-        require(date > block.timestamp, "Event date must be in the future");
-
-        events[eventId].name = name;
-        events[eventId].metadata = metadata;
-        events[eventId].date = date;
-
-        emit EventUpdated(eventId, name, metadata, date);
-    }
-
-    /**
-     * @dev Allows the organizer to update ticket supplies for an event.
-     * @param eventId The ID of the event.
-     * @param ticketInfos An array of TicketInfo structs with updated ticket details.
-     * @param totalTickets The new total number of tickets.
-     */
-    function updateTicketSupplies(uint256 eventId, TicketInfo[] memory ticketInfos, uint256 totalTickets)
-        external
-        onlyOrganizer(eventId)
-        beforeCreateEvent(ticketInfos, totalTickets)
-    {
-        require(events[eventId].date > block.timestamp, "Event has already started");
-        require(totalTickets >= ticketsSold[eventId], "Total tickets cannot be less than tickets sold");
-
-        updateTickets(eventId, ticketInfos, totalTickets - ticketsSold[eventId]);
-        events[eventId].totalTickets = totalTickets;
-
-        emit TicketSupplyUpdated(eventId, totalTickets);
-    }
-
-    /**
-     * @dev Returns the total number of tickets available for an event.
-     * @param eventId The ID of the event.
-     * @return The total number of tickets available.
-     */
-    function getAvailableTickets(uint256 eventId) public view returns (uint256) {
-        return events[eventId].totalTickets - ticketsSold[eventId];
+    function getEventId(uint256 ticketId) public view returns (uint256) {
+        return tickets[ticketId];
     }
 
     /**
@@ -179,7 +131,7 @@ contract TikeeTron is ERC721URIStorage, Ownable, ReentrancyGuard {
      * @return The number of available tickets for the type.
      */
     function getAvailableTicketsByType(uint256 eventId, string memory ticketType) public view returns (uint256) {
-        return ticketSupplies[eventId][ticketType];
+        return ticketInfo[eventId][ticketType].ticketSupply;
     }
 
     /**
@@ -199,36 +151,18 @@ contract TikeeTron is ERC721URIStorage, Ownable, ReentrancyGuard {
     /**
      * @dev Internal function to map ticket information for a new event.
      * @param ticketInfos An array of TicketInfo structs.
-     * @param totalTickets The total number of tickets for the event.
      */
-    function mapTickets(TicketInfo[] memory ticketInfos, uint256 totalTickets) private {
-        uint256 totalTicketSupply = 0;
+    function mapTickets(TicketInfo[] memory ticketInfos) private {
         for (uint256 i = 0; i < ticketInfos.length; i++) {
-            uint256 ticketSupply = ticketInfos[i].ticketSupply;
-            uint256 ticketPrice = ticketInfos[i].ticketPrice;
+            require(ticketInfos[i].ticketSupply > 0, "Ticket supply must be greater than 0");
+            require(ticketInfos[i].ticketStartDate > block.timestamp, "Ticket start date must be in the future");
+            require(
+                ticketInfos[i].ticketEndDate > ticketInfos[i].ticketStartDate,
+                "Ticket end date must be after start date"
+            );
 
-            require(ticketSupply > 0, "Ticket supply each type must be greater than 0");
-            totalTicketSupply += ticketSupply;
-            ticketPrices[_eventId][ticketInfos[i].ticketType] = ticketPrice;
-            ticketSupplies[_eventId][ticketInfos[i].ticketType] = ticketSupply;
+            ticketInfo[_eventId][ticketInfos[i].ticketType] = ticketInfos[i];
         }
-        require(totalTickets == totalTicketSupply, "Total tickets must be equal to the sum of ticket supplies");
-    }
-
-    /**
-     * @dev Internal function to update ticket information for an existing event.
-     * @param eventId The ID of the event.
-     * @param ticketInfos An array of TicketInfo structs with updated information.
-     * @param availableTickets The number of available tickets.
-     */
-    function updateTickets(uint256 eventId, TicketInfo[] memory ticketInfos, uint256 availableTickets) private {
-        uint256 totalTicketSupply = 0;
-        for (uint256 i = 0; i < ticketInfos.length; i++) {
-            totalTicketSupply += ticketInfos[i].ticketSupply;
-            ticketPrices[eventId][ticketInfos[i].ticketType] = ticketInfos[i].ticketPrice;
-            ticketSupplies[eventId][ticketInfos[i].ticketType] = ticketInfos[i].ticketSupply;
-        }
-        require(availableTickets == totalTicketSupply, "Total tickets must be equal to the sum of ticket supplies");
     }
 
     /**
@@ -241,21 +175,10 @@ contract TikeeTron is ERC721URIStorage, Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Modifier to restrict function access to the event organizer.
-     * @param eventId The ID of the event.
-     */
-    modifier onlyOrganizer(uint256 eventId) {
-        require(events[eventId].organizer == msg.sender, "Only the organizer can call this function");
-        _;
-    }
-
-    /**
      * @dev Modifier to validate inputs before creating an event.
      * @param ticketInfos An array of TicketInfo structs.
-     * @param totalTickets The total number of tickets.
      */
-    modifier beforeCreateEvent(TicketInfo[] memory ticketInfos, uint256 totalTickets) {
-        require(totalTickets > 0, "Total tickets must be greater than 0");
+    modifier beforeCreateEvent(TicketInfo[] memory ticketInfos) {
         require(ticketInfos.length > 0, "Ticket types must be greater than 0");
         _;
     }
@@ -266,8 +189,11 @@ contract TikeeTron is ERC721URIStorage, Ownable, ReentrancyGuard {
      * @param ticketType The type of ticket being purchased.
      */
     modifier beforeBuyTicket(uint256 eventId, string memory ticketType) {
-        require(events[eventId].date > block.timestamp, "Event has already started");
-        require(ticketSupplies[eventId][ticketType] > 0, "Ticket type does not exist");
+        TicketInfo memory ticketDetail = ticketInfo[eventId][ticketType];
+        require(ticketDetail.ticketStartDate < block.timestamp, "Ticket sales have not started");
+        require(ticketDetail.ticketEndDate > block.timestamp, "Ticket sales have ended");
+        require(ticketDetail.ticketSupply > 0, "Ticket supplies are exhausted");
+        require(ticketDetail.ticketPrice == msg.value, "Incorrect ticket price");
         _;
     }
 }

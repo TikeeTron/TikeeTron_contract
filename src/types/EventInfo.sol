@@ -9,8 +9,8 @@ struct EventInfo {
     string metadata;
     /// @notice Address of the event organizer
     address payable organizer;
-    /// @notice Date of the event
-    uint256 date;
-    /// @notice Total number of tickets
-    uint256 totalTickets;
+    /// @notice Start date of the event
+    uint256 startDate;
+    /// @notice End date of the event
+    uint256 endDate;
 }
