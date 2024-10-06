@@ -17,13 +17,14 @@ import {TicketInfo} from "./types/TicketInfo.sol";
 contract TikeeTron is ERC721URIStorage, Ownable, ReentrancyGuard {
     // 3.00% fee with 2 decimals
     uint256 private immutable APP_FEE = 300;
-    uint256 private _ticketId;
-    uint256 private _eventId;
+    uint256 public _ticketId;
+    uint256 public _eventId;
 
     mapping(uint256 eventId => EventInfo) public events;
     mapping(uint256 ticketId => uint256 eventId) public tickets;
     mapping(uint256 eventId => mapping(string ticketType => TicketInfo)) public ticketInfo;
     mapping(uint256 eventId => uint256 soldTickets) public ticketsSold;
+    mapping(uint256 ticketId => bool isTicketUsed) public usedTickets;
 
     /**
      * @dev Emitted when a new event is created.
@@ -116,6 +117,25 @@ contract TikeeTron is ERC721URIStorage, Ownable, ReentrancyGuard {
     }
 
     /**
+     * @dev Allows the organizer to use a ticket.
+     * @param ticketId The ID of the ticket.
+     */
+    function useTicket(uint256 ticketId) public onlyOrganizer(getEventId(ticketId)) {
+        require(!usedTickets[ticketId], "Ticket has already been used");
+
+        usedTickets[ticketId] = true;
+    }
+
+    /**
+     * @dev Returns whether a ticket has been used.
+     * @param ticketId The ID of the ticket.
+     * @return A boolean indicating whether the ticket has been used.
+     */
+    function isTicketUsed(uint256 ticketId) public view returns (bool) {
+        return usedTickets[ticketId];
+    }
+
+    /**
      * @dev Returns the event ID for a given ticket ID.
      * @param ticketId The ID of the ticket.
      * @return The ID of the event.
@@ -172,6 +192,15 @@ contract TikeeTron is ERC721URIStorage, Ownable, ReentrancyGuard {
      */
     function calculateFee(uint256 amount) private pure returns (uint256) {
         return (amount * APP_FEE) / 10000;
+    }
+
+    /**
+     * @dev Modifier to restrict access to the event organizer.
+     * @param eventId The ID of the event.
+     */
+    modifier onlyOrganizer(uint256 eventId) {
+        require(events[eventId].organizer == msg.sender, "Only the event organizer can perform this action");
+        _;
     }
 
     /**

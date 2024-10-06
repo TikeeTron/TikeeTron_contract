@@ -222,6 +222,26 @@ contract TikeeTronTest is Test {
         tikeeTron.buyTicket{value: 50 ether}(0, "This is a test ticket", "VIP");
     }
 
+    function test_useTicket() public setupEvent {
+        vm.prank(user1);
+        vm.warp(block.timestamp + 1 days + 1 hours); // Warp to after ticket sales start
+        tikeeTron.buyTicket{value: 50 ether}(0, "This is a test ticket", "VIP");
+
+        vm.prank(organizer);
+        tikeeTron.useTicket(1);
+
+        assertEq(tikeeTron.isTicketUsed(1), true);
+    }
+
+    function test_useTicket_RevertIf_NotOrganizer() public setupEvent {
+        vm.prank(user1);
+        vm.warp(block.timestamp + 1 days + 1 hours); // Warp to after ticket sales start
+        tikeeTron.buyTicket{value: 50 ether}(0, "This is a test ticket", "VIP");
+
+        vm.expectRevert("Only the event organizer can perform this action");
+        tikeeTron.useTicket(1);
+    }
+
     function test_getEvent() public setupEvent {
         EventInfo memory eventInfo = tikeeTron.getEvent(0);
         assertEq(eventInfo.name, "Test Event");
