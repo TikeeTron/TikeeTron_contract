@@ -233,6 +233,17 @@ contract TikeeTronTest is Test {
         assertEq(tikeeTron.isTicketUsed(1), true);
     }
 
+    function test_useTicket_emitsEvent() public setupEvent {
+        vm.prank(user1);
+        vm.warp(block.timestamp + 1 days + 1 hours); // Warp to after ticket sales start
+        tikeeTron.buyTicket{value: 50 ether}(0, "This is a test ticket", "VIP");
+
+        vm.expectEmit(true, true, true, true);
+        emit TikeeTron.TicketUsed(1, 0, address(organizer));
+        vm.prank(organizer);
+        tikeeTron.useTicket(1);
+    }
+
     function test_useTicket_RevertIf_NotOrganizer() public setupEvent {
         vm.prank(user1);
         vm.warp(block.timestamp + 1 days + 1 hours); // Warp to after ticket sales start

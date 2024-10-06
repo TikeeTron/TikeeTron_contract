@@ -46,6 +46,11 @@ contract TikeeTron is ERC721URIStorage, Ownable, ReentrancyGuard {
     );
 
     /**
+     * @dev Emitted when a ticket is used.
+     */
+    event TicketUsed(uint256 indexed ticketId, uint256 indexed eventId, address indexed organizer);
+
+    /**
      * @dev Constructor that sets up the ERC721 token with name and symbol.
      */
     constructor() ERC721("TikeeTron", "TKT") Ownable(msg.sender) {}
@@ -124,6 +129,8 @@ contract TikeeTron is ERC721URIStorage, Ownable, ReentrancyGuard {
         require(!usedTickets[ticketId], "Ticket has already been used");
 
         usedTickets[ticketId] = true;
+
+        emit TicketUsed(ticketId, getEventId(ticketId), msg.sender);
     }
 
     /**
